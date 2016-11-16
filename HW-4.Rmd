@@ -1,6 +1,6 @@
 ---
 title: "MATH 216 Homework 4"
-author: "WRITE YOUR NAME HERE"
+author: "TRISHA SINGH"
 output:
   html_document:
     toc: true
@@ -16,6 +16,10 @@ library(USAboundaries)
 library(maptools)
 library(sp)
 library(broom)
+library(readr)
+library(rgeos)
+library(rgdal)
+library(ggplot2)
 ```
 
 
@@ -24,10 +28,10 @@ library(broom)
 
 Please indicate
 
-* Who you collaborated with:
-* Roughly how much time you spent on this HW so far:
-* The URL of the RPubs published URL [here](https://www.nhl.com/).
-* What gave you the most trouble:
+* Who you collaborated with: Connor, Yuchen
+* Roughly how much time you spent on this HW so far: 2 hrs
+* The URL of the RPubs published URL [here](http://rpubs.com/tsingh/hw4).
+* What gave you the most trouble: Figuring out a set of good criteria for deciding the location of the shipping hub. There are too many things to take into consideration.
 * Any comments you have:
 
 
@@ -42,27 +46,90 @@ the color corresponds to the distance of the given area to the shipping hub,
 which is marked on the map with a large red dot.
 
 ```{r, eval=TRUE, echo=FALSE, message=FALSE, warning=FALSE, fig.width=8, fig.height=4.5}
-# Perform your computations here:
+# Getting US States:
+counties_shp <- us_counties()
+
+Census2010 <- read_csv("~/Documents/Fall 2016/Data Sc/HW-4/Census2010.csv") %>% 
+  select_("Geo_FIPS", "SE_T001_001")
+
+counties_data <- counties_shp@data %>% 
+   mutate(centroid_long=coordinates(counties_shp)[,1]) %>% 
+   mutate(centroid_lat=coordinates(counties_shp)[,2]) %>% 
+  left_join(Census2010, by=c("geoid"="Geo_FIPS")) %>% 
+  mutate(wt_centroid_long = SE_T001_001*centroid_long) %>% 
+  mutate(wt_centroid_lat = SE_T001_001*centroid_lat)
+ 
+counties_polygon <- tidy(counties_shp, region="geoid")
+
+counties <- left_join(counties_polygon, counties_data, by=c("id"="geoid")) %>% 
+   filter( !state_name %in% c("Alaska", "Hawaii", "Puerto Rico"))
+  
+
+#Calculate centre of population lat and long
+
+centre_x_coord <- sum(counties_data$wt_centroid_long, na.rm=TRUE)/
+  sum(counties_data$SE_T001_001, na.rm=TRUE)
+
+centre_y_coord <- sum(counties_data$wt_centroid_lat, na.rm=TRUE)/
+  sum(counties_data$SE_T001_001, na.rm=TRUE)
+
+counties <- counties %>% 
+  mutate(distance=sqrt((centre_x_coord-centroid_long)^2 +
+                         (centre_y_coord-centroid_lat)^2))
+
+cincinnati_x_coord <- -84.6630
+cincinnati_y_coord <- 40.0533
+
+chi_x_coord <--87.6298
+chi_y_coord <- 41.8781
+
+la_x_coord <- -118.2437
+la_y_coord <- 34.0522
 
 ```
 
 
-```{r, eval=FALSE, echo=FALSE, message=FALSE, warning=FALSE, fig.width=8, fig.height=4.5}
+```{r, eval=TRUE, echo=FALSE, message=FALSE, warning=FALSE, fig.width=8, fig.height=4.5}
 # Here is a template of a ggplot call; feel free to change this to suit your
 # needs. Once your computations above are complete, set the eval=TRUE on the
 # line above to tell R Markdown to run this code block.
-ggplot(data=geo_data, aes(x=long, y=lat, group=group, fill=distance)) +
+ggplot(data=counties, aes(x=long, y=lat, group=group, fill=distance)) +
   # Plot choropleth polygons, low -> high being colored white -> dark green
   geom_polygon() +
   scale_fill_gradient(low="white", high="darkgreen") + 
   # Trace outlines of areas
   geom_path(size=0.1) +
   # Mark hub
-  annotate("point", x=hub_x_coord, y=hub_y_coord, col="red", size=5) +
-  # Correct aspect ratio for map
+  annotate("text", label="Centre of Population", 
+           x=centre_x_coord, y=centre_y_coord+0.5, col="red", size=5) +
+  annotate("point", 
+           x=centre_x_coord, y=centre_y_coord, col="red", size=2) +
+  annotate("text", label="Existing DHL Cincinnati Airport Hub", 
+           x=cincinnati_x_coord, y=cincinnati_y_coord+0.5, col="red", size=5) +
+  annotate("point", 
+           x=cincinnati_x_coord, y=cincinnati_y_coord, col="red", size=2) +
+  annotate("text", label="Potential Chicago Hub", 
+           x=chi_x_coord, y=chi_y_coord+0.5, col="blue", size=5) +
+  annotate("point", 
+           x=chi_x_coord, y=chi_y_coord, col="blue", size=2) +
+  annotate("text", label="Potential LA Hub", 
+           x=la_x_coord, y=la_y_coord+0.5, col="blue", size=5) +
+  annotate("point", 
+           x=la_x_coord, y=la_y_coord, col="blue", size=2) +
   coord_map()
 ```
 
+The goal is to locate the new shipping hub as close to the centre of population as possible, taking other factors into consideration.
+
+* DHL already has a shipping hub at Cincinnati Airport which it is planning to expand, so rather than international flight shipping, we should look at hubs with good ground and/or water transport.
+Citation: [here](http://www.wsj.com/articles/dhl-to-spend-108-million-to-expand-cincinnati-air-hub-1433101099)
+
+* The top locations for shipping hubs with the best ground and water transport are: _Chicago_, _LA_, Houston, Memphis, Atlanta
+Citation: [here](http://www.supplychaindigital.com/logistics/2913/Top-5-US-logistics-cities)
+
+* I am not going to consider Houston because it is a booming trading hub due to the North American Free Trade Association (NAFTA), which may get scrapped under the Trump government. I will also not consider Memphis since FedEx's shipping hub is located there and it could not be a good idea to compete with FedEx for supply chain resources. I am exclusing Atlanta because it does not have a water port.
+
+**So Chicago and LA are good options for opening a shipping hub. Chicago is close to the centre of population, but it is also close to the existing hub. LA is far from the centre of population, but it covers a side of the US that is not already covered by DHL.**
 
 
 
